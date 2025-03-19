@@ -1,3 +1,37 @@
+import argparse
+from datetime import datetime
+import random
+import time
+import torch
+import transformers
+
+# from hf
+from transformers import AutoTokenizer
+from transformers import DataCollatorForLanguageModeling
+from transformers import TrainingArguments, Trainer
+
+# EPOCHS = 1
+
+# parser = argparse.ArgumentParser(
+#     description="Just an example",
+#     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+# )
+
+# parser.add_argument("-o", "--output", required=True, help="Path to output folder.")
+# parser.add_argument(
+#     "-r",
+#     "--resume",
+#     default=False,
+#     help="Resume training.",
+#     action=argparse.BooleanOptionalAction,
+# )
+
+# args = parser.parse_args()
+# config = vars(args)
+# output_path = config["output"]
+# resume = config["resume"]
+
+
 cfg3b = {
     "22": [["21", "20"], ["20", "19"]],
     "21": [["18", "16"], ["16", "18", "17"]],
@@ -18,9 +52,7 @@ cfg3b = {
 }
 
 cfg = cfg3b
-
-import random
-import transformers
+cfg_start_symbol = "22"
 
 
 def _flatten_symbols(symbols):
@@ -35,9 +67,9 @@ def _flatten_symbols(symbols):
 
 def get_longest_sequence(start_symbol, cfg_rules):
     terminal_symbols = set(get_terminal_symbols(cfg_rules))
-    cfg_lengths = {ts:1 for ts in terminal_symbols}
+    cfg_lengths = {ts: 1 for ts in terminal_symbols}
     rules = list(cfg_rules.keys())
-    
+
     while rules:
         next_rule = rules.pop()
         nts_set = set(_flatten_symbols(cfg_rules[next_rule]))
@@ -47,7 +79,7 @@ def get_longest_sequence(start_symbol, cfg_rules):
             if nts not in cfg_lengths:
                 calculate_length = False
                 break
-    
+
         if calculate_length:
             generation_lengths = []
             for generation_list in cfg_rules[next_rule]:
@@ -58,7 +90,7 @@ def get_longest_sequence(start_symbol, cfg_rules):
             cfg_lengths[next_rule] = max(generation_lengths)
         else:
             rules.append(next_rule)
-            
+
     return cfg_lengths[start_symbol]
 
 
@@ -89,8 +121,8 @@ def get_terminal_symbols(cfg_rules):
             for v in value:
                 if v not in cfg_rules:
                     terminal_symbols.append(v)
-                    
-    return (terminal_symbols)
+
+    return terminal_symbols
 
 
 def validate_string(input: str, start_symbol: str, cfg_rules: dict[str, str]):
@@ -154,127 +186,77 @@ def validate_string(input: str, start_symbol: str, cfg_rules: dict[str, str]):
     # return parse_cfg(tape, [start_symbol], reverse_cfg_rules)
     return parse_cfg(tape, [])
 
-stop_symbol = '0'
-# Get all unique characters in the text as vocabulary
-chars = list(set(get_terminal_symbols(cfg)))
-chars.append(stop_symbol)
-vocab_size = len(chars)
-
-# build the character level tokenizer
-chr_to_idx = {c:i for i, c in enumerate(chars)}
-idx_to_chr = {i:c for i, c in enumerate(chars)}
-
-def encode(input_text: str) -> list[int]:
-    return [chr_to_idx[t] for t in input_text]
-
-def decode(input_tokens: list[int]) -> str:
-    return "".join([idx_to_chr[i] for i in input_tokens])
-
-print(chars)
-print(vocab_size)
-
-import torch
 
 # use cpu or gpu based on your system
 device = "cpu"
 if torch.cuda.is_available():
     device = "cuda"
 
-train_batch_size = 16  # training batch size
-eval_batch_size = 8  # evaluation batch size
-train_split = 0.8  # percentage of data to use from total data for training
 
-class DataLoader:
-    def __init__(self, batch_size, cfg, start_symbol) -> None:
-        self.batch_size = batch_size
-        self.cfg = cfg
-        self.start_symbol = start_symbol
-        self.context_length = get_longest_sequence(start_symbol, cfg) + 1 # stop symbol
+# load the gpt-2 tokenizer
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
+tokenizer.pad_token = tokenizer.eos_token
 
-        self.current_position = 0
-
-    def get_batch(self) -> torch.tensor:
-        b, c = self.batch_size, self.context_length
-
-        # Genereate cfg strings with terminating tokens until we're full.
-        sequences = ""
-        while len(sequences) <= b * c:
-            sequences += generate_from_cfg(self.start_symbol, self.cfg) + stop_symbol
-        
-        data = torch.tensor(encode(sequences[:b*c+1]), device=device)
-
-        x = data[:-1].view(b, c)
-        y = data[1:].view(b, c)
-
-        self.current_position += b
-        return x, y
-
-train_loader = DataLoader(train_batch_size, cfg, "22")
-eval_loader = DataLoader(eval_batch_size, cfg, "22")
-
-xb, yb = train_loader.get_batch()
-print(xb.size(), yb.size())
-
-# used to define size of embeddings
-d_model = vocab_size 
-
-
-import torch.nn as nn
-import torch.nn.functional as F
-
-class GPT(nn.Module):
-    def __init__(self, vocab_size, d_model):
+class CFGDataset(torch.utils.data.IterableDataset):
+    def __init__(
+        self, cfg_rules: dict[str, str], start_symbol: str, num_generations: int
+    ):
+        """Each CFG could be drawn from infinite times. To satisfy PyTorch Dataset, we ask for the length."""
         super().__init__()
-        self.wte = nn.Embedding(vocab_size, d_model) # word token embeddings
+        self.cfg_rules = cfg_rules
+        self.start_symbol = start_symbol
+        self.num_generations = num_generations
+        self.idx = 0
 
-    def forward(self, inputs, targets = None):
-        logits = self.wte(inputs) # dim -> batch_size, sequence_length, d_model
-        loss = None
-        if targets != None:
-            batch_size, sequence_length, d_model = logits.shape
-            # to calculate loss for all token embeddings in a batch
-            # kind of a requirement for cross_entropy
-            logits = logits.view(batch_size * sequence_length, d_model)
-            targets = targets.view(batch_size * sequence_length)
-            loss = F.cross_entropy(logits, targets)
-        return logits, loss
+    def __len__(self):
+        return self.num_generations
 
-    def generate(self, inputs, max_new_tokens):
-        # this will store the model outputs along with the initial input sequence
-        # make a copy so that it doesn't interfare with model 
-        for _ in range(max_new_tokens):
-            # we only pass targets on training to calculate loss
-            logits, _ = self(inputs)  
-            # for all the batches, get the embeds for last predicted sequence
-            logits = logits[:, -1, :] 
-            probs = F.softmax(logits, dim=1)            
-            # get the probable token based on the input probs
-            idx_next = torch.multinomial(probs, num_samples=1) 
+    def __iter__(self):
+        self.idx = 0
+        return self
+    
+    def __next__(self):
+        if self.idx >= len(self):
+            raise StopIteration
+        self.idx += 1
+        return torch.tensor(tokenizer.encode(generate_from_cfg(self.start_symbol, self.cfg_rules)), device=device)
 
-            inputs = torch.cat([inputs, idx_next], dim=1)
-        # as the inputs has all model outputs + initial inputs, we can use it as final output
-        return inputs
 
-m = GPT(vocab_size=vocab_size, d_model=d_model).to(device)
+data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 
-lr = 1e-3
-optim = torch.optim.AdamW(m.parameters(), lr=lr)
+gpt_config = transformers.GPT2Config()
 
-epochs = 5000
-eval_steps = 1000 # perform evaluation in every n steps
-for ep in range(epochs):
-    xb, yb = train_loader.get_batch()
+model = transformers.GPT2LMHeadModel(gpt_config)
 
-    logits, loss = m(xb, yb)
-    optim.zero_grad(set_to_none=True)
-    loss.backward()
-    optim.step()
 
-    if ep % eval_steps == 0 or ep == epochs-1:
-        m.eval()
-        with torch.no_grad():
-            xvb, yvb = eval_loader.get_batch()
-            _, e_loss = m(xvb, yvb)
+training_args = TrainingArguments(
+    output_dir="gpt-2-cfg3b/standard-gpt",
+    evaluation_strategy="steps",
+    eval_steps=500,
+    num_train_epochs=1,
+    per_device_train_batch_size=60,
+    per_device_eval_batch_size=60,
+    learning_rate=2.5e-4,
+    lr_scheduler_type="cosine",
+    warmup_ratio=0.05,
+    adam_beta1=0.9,
+    adam_beta2=0.999,
+    weight_decay=0.01,
+    logging_strategy="steps",
+    logging_steps=500,
+    save_steps=5000,
+    save_total_limit=10,
+    report_to="wandb",
+    dataloader_pin_memory=False,
+)
 
-            print(f"Epoch: {ep}\tlr: {lr}\ttrain_loss: {loss}\teval_loss: {e_loss}")
-        m.train() # back to training mode
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    tokenizer=tokenizer,
+    train_dataset=CFGDataset(cfg, cfg_start_symbol, 1800000),
+    eval_dataset=CFGDataset(cfg, cfg_start_symbol, 10000),
+    data_collator=data_collator,
+)
+
+trainer.train()
