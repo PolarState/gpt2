@@ -107,7 +107,7 @@ def validate_string(input: str, start_symbol: str, cfg_rules: dict[str, str]):
 
 # load the gpt-2 tokenizer
 tokenizer = AutoTokenizer.from_pretrained("gpt2")
-tokenizer.pad_token = tokenizer.eos_token
+# tokenizer.pad_token = tokenizer.eos_token
 
 
 def validate_samples(tokenizer, model, n_samples, cfg, cfg_start_symbol):
@@ -124,18 +124,18 @@ def validate_samples(tokenizer, model, n_samples, cfg, cfg_start_symbol):
             top_p=0.95,
         )
         tokenized_output = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-        if validate_string(tokenized_output, cfg_start_symbol, cfg):
+        if validate_string(tokenized_output[0], cfg_start_symbol, cfg):
             valid_count += 1
     print(f"{valid_count}/{n_samples} = {valid_count/n_samples}")
 
 
-checkpoint_names = os.listdir("./gpt-2-cfg3b/standard-gpt")
+checkpoint_names = os.listdir("./gpt-2-cfg3b/polm-0")
 for checkpoint_name in checkpoint_names:
     print(checkpoint_name)
     if re.findall(checkpoint_regex, checkpoint_name):
         model = GPT2LMHeadModel.from_pretrained(
-            f"gpt-2-cfg3b/standard-gpt/{checkpoint_name}/"
+            f"gpt-2-cfg3b/polm-0/{checkpoint_name}/"
         )
         model.generation_config.pad_token_id = tokenizer.pad_token_id
-        validate_samples(tokenizer, model, 100, cfg, cfg_start_symbol)
+        validate_samples(tokenizer, model, 10, cfg, cfg_start_symbol)
 

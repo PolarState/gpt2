@@ -4,6 +4,7 @@ import random
 import time
 import torch
 import transformers
+import os
 
 # from hf
 from transformers import AutoTokenizer
@@ -12,24 +13,24 @@ from transformers import TrainingArguments, Trainer
 
 # EPOCHS = 1
 
-# parser = argparse.ArgumentParser(
-#     description="Just an example",
-#     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-# )
+parser = argparse.ArgumentParser(
+    description="Options for main",
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+)
 
 # parser.add_argument("-o", "--output", required=True, help="Path to output folder.")
-# parser.add_argument(
-#     "-r",
-#     "--resume",
-#     default=False,
-#     help="Resume training.",
-#     action=argparse.BooleanOptionalAction,
-# )
+parser.add_argument(
+    "-r",
+    "--resume",
+    default=False,
+    help="Resume training.",
+    action=argparse.BooleanOptionalAction,
+)
 
-# args = parser.parse_args()
-# config = vars(args)
+args = parser.parse_args()
+config = vars(args)
+resume = config["resume"]
 # output_path = config["output"]
-# resume = config["resume"]
 
 
 cfg3b = {
@@ -195,11 +196,15 @@ if torch.cuda.is_available():
 
 # load the gpt-2 tokenizer
 tokenizer = AutoTokenizer.from_pretrained("gpt2")
-tokenizer.pad_token = tokenizer.eos_token
+
 
 class CFGDataset(torch.utils.data.IterableDataset):
     def __init__(
-        self, cfg_rules: dict[str, str], start_symbol: str, num_generations: int
+        self,
+        cfg_rules: dict[str, str],
+        start_symbol: str,
+        num_generations: int,
+        window_length: int = 512,
     ):
         """Each CFG could be drawn from infinite times. To satisfy PyTorch Dataset, we ask for the length."""
         super().__init__()
@@ -207,19 +212,46 @@ class CFGDataset(torch.utils.data.IterableDataset):
         self.start_symbol = start_symbol
         self.num_generations = num_generations
         self.idx = 0
+        self.generation_buffer = []
+        self.window_length = window_length
 
     def __len__(self):
         return self.num_generations
 
     def __iter__(self):
+        # Reset our internal count when we're asked to iterate again.
         self.idx = 0
         return self
-    
+
     def __next__(self):
+
+        # Exit if we've completed all iterations.
         if self.idx >= len(self):
             raise StopIteration
+
+        # Fill our generation buffer up to our widow length.
+        while len(self.generation_buffer) < self.window_length:
+            self.generation_buffer.extend(
+                tokenizer.encode(
+                    tokenizer.bos_token
+                    + generate_from_cfg(self.start_symbol, self.cfg_rules)
+                    + tokenizer.eos_token
+                )
+            )
+
+        # Update our fake iterator length.
         self.idx += 1
-        return torch.tensor(tokenizer.encode(generate_from_cfg(self.start_symbol, self.cfg_rules)), device=device)
+
+        # Generate tensors from our window.
+        next_item = torch.tensor(
+            self.generation_buffer[: self.window_length],
+            device=device,
+        )
+
+        # Trim outgoing tokens from our window.
+        self.generation_buffer = self.generation_buffer[self.window_length :]
+
+        return next_item
 
 
 data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
@@ -228,19 +260,18 @@ gpt_config = transformers.GPT2Config()
 
 model = transformers.GPT2LMHeadModel(gpt_config)
 
-
+batch_size = 22
 training_args = TrainingArguments(
-    output_dir="gpt-2-cfg3b/standard-gpt",
+    output_dir="gpt-2-cfg3b/polm-0/",
     evaluation_strategy="steps",
     eval_steps=500,
     num_train_epochs=1,
-    per_device_train_batch_size=60,
-    per_device_eval_batch_size=60,
-    learning_rate=2.5e-4,
-    lr_scheduler_type="cosine",
-    warmup_ratio=0.05,
+    per_device_train_batch_size=batch_size,
+    per_device_eval_batch_size=batch_size,
+    learning_rate=0.003,
+    lr_scheduler_type="linear",
     adam_beta1=0.9,
-    adam_beta2=0.999,
+    adam_beta2=0.98,
     weight_decay=0.01,
     logging_strategy="steps",
     logging_steps=500,
@@ -250,13 +281,19 @@ training_args = TrainingArguments(
     dataloader_pin_memory=False,
 )
 
+
 trainer = Trainer(
     model=model,
     args=training_args,
     tokenizer=tokenizer,
-    train_dataset=CFGDataset(cfg, cfg_start_symbol, 1800000),
+    train_dataset=CFGDataset(cfg, cfg_start_symbol, 100000 * 96),
     eval_dataset=CFGDataset(cfg, cfg_start_symbol, 10000),
     data_collator=data_collator,
 )
 
-trainer.train()
+checkpoint_names = os.listdir("./gpt-2-cfg3b/polm-0")
+if resume:
+    last_checkpoint = list(reversed(sorted(checkpoint_names)))[0]
+    trainer.train(f"gpt-2-cfg3b/polm-0/{last_checkpoint}/")
+else:
+    trainer.train()
