@@ -5,7 +5,7 @@ import transformers
 import os
 import logging
 
-from CFG import cfg_defines, cfg_datasets
+from cfg import cfg_defines, cfg_datasets
 
 from transformers import AutoTokenizer
 from transformers import DataCollatorForLanguageModeling
@@ -38,25 +38,6 @@ resume = config["resume"]
 model_name = config["model"]
 # output_path = config["output"]
 
-
-cfg3b = {
-    "22": [["21", "20"], ["20", "19"]],
-    "21": [["18", "16"], ["16", "18", "17"]],
-    "20": [["17", "16", "18"], ["16", "17"]],
-    "19": [["16", "17", "18"], ["17", "18", "16"]],
-    "18": [["15", "14", "13"], ["14", "13"]],
-    "17": [["14", "13", "15"], ["15", "13", "14"]],
-    "16": [["15", "13"], ["13", "15", "14"]],
-    "15": [["12", "11", "10"], ["11", "12", "10"]],
-    "14": [["11", "10", "12"], ["10", "11", "12"]],
-    "13": [["11", "12"], ["12", "11"]],
-    "12": [["8", "9", "7"], ["9", "7", "8"]],
-    "11": [["8", "7", "9"], ["7", "8", "9"]],
-    "10": [["7", "9", "8"], ["9", "8", "7"]],
-    "9": [["3", "2", "1"], ["2", "1"]],
-    "8": [["3", "2"], ["3", "1", "2"]],
-    "7": [["3", "1"], ["1", "2", "3"]],
-}
 
 cfg = cfg_defines.cfg3b
 cfg_start_symbol = "22"
@@ -119,8 +100,12 @@ trainer = Trainer(
     model=model,
     args=training_args,
     tokenizer=tokenizer,
-    train_dataset=cfg_datasets.CFGDataset(cfg, cfg_start_symbol, 100000 * 96),
-    eval_dataset=cfg_datasets.CFGDataset(cfg, cfg_start_symbol, 10000),
+    train_dataset=cfg_datasets.CFGRandomGenerationDataset(
+        cfg, cfg_start_symbol, 100000 * 96, tokenizer=tokenizer
+    ),
+    eval_dataset=cfg_datasets.CFGRandomGenerationDataset(
+        cfg, cfg_start_symbol, 10000, tokenizer=tokenizer
+    ),
     data_collator=data_collator,
 )
 

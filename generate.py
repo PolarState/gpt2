@@ -2,7 +2,7 @@ import argparse
 import os
 import re
 
-from CFG import cfg_defines, cfg_generator
+from cfg import cfg_defines, cfg_generator
 
 import transformers
 from transformers import AutoTokenizer
