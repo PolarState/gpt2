@@ -101,10 +101,10 @@ trainer = Trainer(
     args=training_args,
     tokenizer=tokenizer,
     train_dataset=cfg_datasets.CFGRandomGenerationDataset(
-        cfg, cfg_start_symbol, 100000 * 96, tokenizer=tokenizer
+        cfg, cfg_start_symbol, 100000 * 96 * 512, tokenizer=tokenizer, device=device
     ),
     eval_dataset=cfg_datasets.CFGRandomGenerationDataset(
-        cfg, cfg_start_symbol, 10000, tokenizer=tokenizer
+        cfg, cfg_start_symbol, 10000 * 512, tokenizer=tokenizer, device=device
     ),
     data_collator=data_collator,
 )
