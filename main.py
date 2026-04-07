@@ -11,6 +11,8 @@ from transformers import AutoTokenizer
 from transformers import DataCollatorForLanguageModeling
 from transformers import TrainingArguments, Trainer
 
+DATASET_TRAIN_PATH = "../CFG/datasets/cfg3b_train_dataset.bin"
+DATASET_VALIDATION_PATH = "../CFG/datasets/cfg3b_val_dataset.bin"
 
 parser = argparse.ArgumentParser(
     description="Options for main",
@@ -65,7 +67,7 @@ elif model_name == "GPTNeoX":
     )
     model = transformers.GPTNeoXForCausalLM(gpt_config)
     batch_size = 9
-    output_dir = "gptneox-cfg3b/polm-1/"
+    output_dir = "gptneox-cfg3b/polm-3/"
     tokenizer = transformers.GPTNeoXTokenizerFast.from_pretrained(
         "openai-community/gpt2"
     )
@@ -93,19 +95,26 @@ training_args = TrainingArguments(
     dataloader_pin_memory=False,
 )
 
-
+# train_dataset=cfg_datasets.CFGRandomGenerationDataset(
+#     cfg, cfg_start_symbol, 100000 * 96 * 512, tokenizer=tokenizer, device=device
+# ),
+# eval_dataset=cfg_datasets.CFGRandomGenerationDataset(
+#     cfg, cfg_start_symbol, 10000 * 512, tokenizer=tokenizer, device=device
+# ),
+train_dataset=cfg_datasets.CFGFileDataset(
+        filename=DATASET_TRAIN_PATH, device=device
+    )
+eval_dataset=cfg_datasets.CFGFileDataset(
+        filename=DATASET_VALIDATION_PATH, device=device
+    )
 data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 
 trainer = Trainer(
     model=model,
     args=training_args,
-    tokenizer=tokenizer,
-    train_dataset=cfg_datasets.CFGRandomGenerationDataset(
-        cfg, cfg_start_symbol, 100000 * 96 * 512, tokenizer=tokenizer, device=device
-    ),
-    eval_dataset=cfg_datasets.CFGRandomGenerationDataset(
-        cfg, cfg_start_symbol, 10000 * 512, tokenizer=tokenizer, device=device
-    ),
+    processing_class=tokenizer,
+    train_dataset=train_dataset,
+    eval_dataset=eval_dataset,
     data_collator=data_collator,
 )
 
