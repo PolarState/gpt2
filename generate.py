@@ -2,11 +2,13 @@ import argparse
 import os
 import re
 
-from cfg import cfg_defines, cfg_generator
+from cfg import cfg_defines
+from cfg.cfg_grammar import CFGrammar
 
 import transformers
 from transformers import AutoTokenizer
 from transformers import GPT2LMHeadModel
+from transformers import GPTNeoXForCausalLM
 
 
 parser = argparse.ArgumentParser(
@@ -29,25 +31,28 @@ model_name = config["model"]
 checkpoint_regex = r"(?<=checkpoint\-)*.?"
 
 
-cfg = cfg_defines.cfg3b
+grammar = CFGrammar(cfg_defines.cfg3b, name="cfg3b")
 cfg_start_symbol = "22"
 
 
-def validate_samples(tokenizer, model, n_samples, cfg, cfg_start_symbol):
+def validate_samples(tokenizer, model, n_samples, grammar, cfg_start_symbol):
     valid_count = 0
     for _ in range(n_samples):
         inputs = tokenizer(
-            tokenizer.bos_token, return_tensors="pt", padding=True
-        ).input_ids
-        outputs = model.generate(
-            inputs,
-            max_new_tokens=100,
-            do_sample=True,
-            top_k=10,
-            top_p=0.95,
+            tokenizer.bos_token, return_tensors="pt"#, padding=True
         )
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=512,
+            # do_sample=False,
+            # top_k=10,
+            # top_p=0.95,
+        )
+        print(f"{outputs=}")
+        # print(outputs)
         tokenized_output = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-        if cfg_generator.validate_string(tokenized_output[0], cfg_start_symbol, cfg):
+        print(f"{tokenized_output=}")
+        if grammar.validate(tokenized_output[0], cfg_start_symbol):
             valid_count += 1
     print(f"{valid_count}/{n_samples} = {valid_count/n_samples}")
 
@@ -58,11 +63,15 @@ if model_name == "GPT2":
     tokenizer.pad_token = tokenizer.eos_token
 
 elif model_name == "GPTNeoX":
-    output_dir = "gptneox-cfg3b/polm-0/"
+    output_dir = "gptneox-cfg3b/polm-2/"
     tokenizer = transformers.GPTNeoXTokenizerFast.from_pretrained(
         "openai-community/gpt2"
     )
+    # tokenizer.bos_token = tokenizer.tokenize("B")[0]
+    # tokenizer.bos_token_id = 
     tokenizer.pad_token = tokenizer.eos_token
+    # tokenizer.pad_token = "[PAD]"
+    # tokenizer.padding_side = "left"
 
 else:
     raise NotImplementedError(f"no implementation for {model_name}")
@@ -71,6 +80,6 @@ checkpoint_names = os.listdir(f"{output_dir}")
 for checkpoint_name in checkpoint_names:
     print(checkpoint_name)
     if re.findall(checkpoint_regex, checkpoint_name):
-        model = GPT2LMHeadModel.from_pretrained(f"{output_dir}/{checkpoint_name}/")
-        model.generation_config.pad_token_id = tokenizer.pad_token_id
-        validate_samples(tokenizer, model, 10, cfg, cfg_start_symbol)
+        model = GPTNeoXForCausalLM.from_pretrained(f"{output_dir}/{checkpoint_name}/")
+        # model.generation_config.pad_token_id = tokenizer.pad_token_id
+        validate_samples(tokenizer, model, 1, grammar, cfg_start_symbol)
