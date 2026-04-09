@@ -45,3 +45,34 @@ python main.py -m GPTNeoX --resume
 ```bash
 python generate.py -m GPTNeoX
 ```
+
+## DAWG Analysis
+
+Build a [CDAWG](https://github.com/viking-sudo-rm/rusty-dawg) (Compacted Directed Acyclic Word Graph) over the training data to model its n-gram distribution. This can then be compared against the distributions learned by trained models. See [Evaluating n-Gram Novelty of Language Models Using Rusty-DAWG](https://arxiv.org/abs/2406.13069) for background.
+
+### Building rusty-dawg
+
+Clone and build the Rust library with Python bindings:
+
+```bash
+git clone https://github.com/viking-sudo-rm/rusty-dawg.git
+cd rusty-dawg/bindings/python
+pip install maturin
+maturin build --release
+pip install target/wheels/*.whl
+```
+
+### Building a CDAWG from training data
+
+```bash
+# Full training set (disk-backed, ~4.9B tokens):
+python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_train_dataset.bin
+
+# Validation set only (faster, ~5M tokens):
+python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_val_dataset.bin
+
+# Subset of the training set (e.g. first 1M windows):
+python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_train_dataset.bin --max-windows 1000000
+```
+
+The CDAWG is saved to `analysis/cdawg_<dataset_name>/` and can be reloaded for querying via `DiskCdawg.load()`.
