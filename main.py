@@ -4,15 +4,50 @@ import torch
 import transformers
 import os
 import logging
+import psutil
+import subprocess
 
 from cfg import cfg_defines, cfg_datasets
 
 from transformers import AutoTokenizer
 from transformers import DataCollatorForLanguageModeling
-from transformers import TrainingArguments, Trainer
+from transformers import TrainingArguments, Trainer, TrainerCallback
 
 DATASET_TRAIN_PATH = "../CFG/datasets/cfg3b_train_dataset.bin"
 DATASET_VALIDATION_PATH = "../CFG/datasets/cfg3b_val_dataset.bin"
+
+logging.basicConfig(
+    filename="training.log",
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+
+
+def get_gpu_temp():
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=temperature.gpu", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return int(result.stdout.strip())
+    except Exception:
+        return -1
+
+
+class MetricsCallback(TrainerCallback):
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if not torch.cuda.is_available():
+            return
+        metrics = {
+            "system/gpu_mem_allocated_gb": torch.cuda.memory_allocated() / 1024**3,
+            "system/gpu_mem_reserved_gb": torch.cuda.memory_reserved() / 1024**3,
+            "system/gpu_temp_c": get_gpu_temp(),
+            "system/ram_used_gb": psutil.virtual_memory().used / 1024**3,
+            "system/ram_percent": psutil.virtual_memory().percent,
+        }
+        logging.info(f"system_metrics: {metrics}")
+        if logs is not None:
+            logs.update(metrics)
 
 parser = argparse.ArgumentParser(
     description="Options for main",
@@ -49,6 +84,7 @@ cfg_start_symbol = "22"
 device = "cpu"
 if torch.cuda.is_available():
     device = "cuda"
+    torch.cuda.set_per_process_memory_fraction(0.95)
 
 if model_name == "GPT2":
     gpt_config = transformers.GPT2Config()
@@ -116,6 +152,7 @@ trainer = Trainer(
     train_dataset=train_dataset,
     eval_dataset=eval_dataset,
     data_collator=data_collator,
+    callbacks=[MetricsCallback],
 )
 
 try:
