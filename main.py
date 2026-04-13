@@ -54,7 +54,7 @@ if model_name == "GPT2":
     gpt_config = transformers.GPT2Config()
     model = transformers.GPT2LMHeadModel(gpt_config)
     batch_size = 22
-    output_dir = ("gpt2-cfg3b/polm-0/",)
+    output_dir = "gpt2-cfg3b/polm-0/"
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
 
 elif model_name == "GPTNeoX":
@@ -67,7 +67,7 @@ elif model_name == "GPTNeoX":
     )
     model = transformers.GPTNeoXForCausalLM(gpt_config)
     batch_size = 9
-    output_dir = "gptneox-cfg3b/polm-3/"
+    output_dir = "gptneox-cfg3b/polm-4/"
     tokenizer = transformers.GPTNeoXTokenizerFast.from_pretrained(
         "openai-community/gpt2"
     )
@@ -128,4 +128,3 @@ try:
 except Exception as e:
     print(f"AT: {datetime.now()}")
     logging.exception("training exited with exception.")
-    print(f"GPU temp: {torch.cuda.temperature()}")
