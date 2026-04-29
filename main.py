@@ -8,8 +8,10 @@ import psutil
 import subprocess
 
 from cfg import cfg_defines, cfg_datasets
+from cfg.cfg_grammar import CFGrammar
+from cfg.cfg_tokenizers import CFGCharacterTokenizer
+from cfg.hf_adapter import HFTokenizerAdapter
 
-from transformers import AutoTokenizer
 from transformers import DataCollatorForLanguageModeling
 from transformers import TrainingArguments, Trainer, TrainerCallback
 
@@ -54,7 +56,7 @@ parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 )
 
-# parser.add_argument("-o", "--output", required=True, help="Path to output folder.")
+parser.add_argument("-o", "--output", default=None, help="Path to output folder.")
 parser.add_argument(
     "-r",
     "--resume",
@@ -73,12 +75,14 @@ args = parser.parse_args()
 config = vars(args)
 resume = config["resume"]
 model_name = config["model"]
-# output_path = config["output"]
+output_path = config["output"]
 
 
 cfg = cfg_defines.cfg3b
 cfg_start_symbol = "22"
 
+grammar = CFGrammar.from_name("cfg3b")
+tokenizer = HFTokenizerAdapter(CFGCharacterTokenizer(vocab=grammar.terminal_symbols))
 
 # use cpu or gpu based on your system
 device = "cpu"
@@ -87,26 +91,30 @@ if torch.cuda.is_available():
     torch.cuda.set_per_process_memory_fraction(0.95)
 
 if model_name == "GPT2":
-    gpt_config = transformers.GPT2Config()
+    gpt_config = transformers.GPT2Config(
+        vocab_size=tokenizer.vocab_size,
+        bos_token_id=tokenizer.bos_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+    )
     model = transformers.GPT2LMHeadModel(gpt_config)
-    batch_size = 22
-    output_dir = "gpt2-cfg3b/polm-0/"
-    tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    batch_size = 96
+    output_dir = output_path or "gpt2-cfg3b/polm-0/"
 
 elif model_name == "GPTNeoX":
-    # Initalize GPTNeoX to use the same tokenizer, number of heads etc as GPT2
     gpt_config = transformers.GPTNeoXConfig(
+        vocab_size=tokenizer.vocab_size,
+        bos_token_id=tokenizer.bos_token_id,
+        eos_token_id=tokenizer.eos_token_id,
         hidden_size=768,
         num_hidden_layers=12,
         num_attention_heads=12,
+        intermediate_size=3072,
         max_position_embeddings=512,
     )
     model = transformers.GPTNeoXForCausalLM(gpt_config)
-    batch_size = 9
-    output_dir = "gptneox-cfg3b/polm-4/"
-    tokenizer = transformers.GPTNeoXTokenizerFast.from_pretrained(
-        "openai-community/gpt2"
-    )
+    batch_size = 96
+    output_dir = output_path or "gptneox-cfg3b/polm-5/"
+
 else:
     raise NotImplementedError(f"no implementation for {model_name}")
 
@@ -118,17 +126,18 @@ training_args = TrainingArguments(
     num_train_epochs=1,
     per_device_train_batch_size=batch_size,
     per_device_eval_batch_size=batch_size,
-    learning_rate=0.003,
+    learning_rate=0.0003,
     lr_scheduler_type="linear",
     adam_beta1=0.9,
     adam_beta2=0.98,
-    weight_decay=0.01,
+    weight_decay=0.1,
     logging_strategy="steps",
     logging_steps=20000,
     save_steps=20000,
     save_total_limit=10,
     report_to="wandb",
     dataloader_pin_memory=False,
+    fp16=True,
 )
 
 # train_dataset=cfg_datasets.CFGRandomGenerationDataset(
