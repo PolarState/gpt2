@@ -76,3 +76,25 @@ python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_train_dataset.bin 
 ```
 
 The CDAWG is saved to `analysis/cdawg_<dataset_name>/` and can be reloaded for querying via `DiskCdawg.load()`.
+
+## Infinigram (Suffix Array) Analysis
+
+A faster alternative to the CDAWG for arbitrary-length n-gram queries on small-alphabet corpora. Builds an in-memory suffix array via [pydivsufsort](https://pypi.org/project/pydivsufsort/) (libdivsufsort) and supports the same `count(pattern)` and next-token-distribution queries. On the 49M-token cfg3b val set the SA builds in ~10s vs ~5min for the CDAWG.
+
+### Installing pydivsufsort
+
+```bash
+pip install pydivsufsort
+```
+
+### Building an infinigram
+
+```bash
+# Validation set (~10s, ~250 MB on disk):
+python analysis/build_infinigram.py --dataset ../CFG/datasets/cfg3b_val_dataset.bin
+
+# Full training set (~70 min single-threaded, ~42 GB on disk):
+python analysis/build_infinigram.py --dataset ../CFG/datasets/cfg3b_train_dataset.bin
+```
+
+The index is saved to `analysis/sa_<dataset_name>/` as `tokens.bin` (raw uint8) plus `suffix_array.bin` (raw int32 or int64; see `meta.txt`).

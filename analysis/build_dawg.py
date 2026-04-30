@@ -377,15 +377,16 @@ def main():
     # token at a time via transition_and_count(), then read off the
     # suffix count at the final state.
     #
-    # Token IDs for cfg3b (GPT2 encoding of single characters):
-    #   16 = '1', 17 = '2', 18 = '3'
+    # Token IDs for cfg3b (CFGCharacterTokenizer over terminal symbols
+    # ['1','2','3'] sorted, plus eos='E'(3) and bos='B'(4)):
+    #   0 = '1', 1 = '2', 2 = '3'
     print("\nSanity check — querying short sequences:")
     test_sequences = [
-        ([16],           "'1'"),
-        ([17],           "'2'"),
-        ([18],           "'3'"),
-        ([16, 17, 18],   "'123'"),
-        ([18, 16, 17],   "'312'"),
+        ([0],         "'1'"),
+        ([1],         "'2'"),
+        ([2],         "'3'"),
+        ([0, 1, 2],   "'123'"),
+        ([2, 0, 1],   "'312'"),
     ]
     for seq, label in test_sequences:
         # Start at the CDAWG initial state (root / empty string).
