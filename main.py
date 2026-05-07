@@ -70,12 +70,19 @@ parser.add_argument(
     default="GPT2",
     help="name of the model to use. 'GPT2' and 'GPTNeoX' are the only supported options currently.",
 )
+parser.add_argument(
+    "--reverse",
+    default=False,
+    help="Read the dataset in reverse window order (last window first).",
+    action=argparse.BooleanOptionalAction,
+)
 
 args = parser.parse_args()
 config = vars(args)
 resume = config["resume"]
 model_name = config["model"]
 output_path = config["output"]
+reverse = config["reverse"]
 
 
 cfg = cfg_defines.cfg3b
@@ -147,10 +154,10 @@ training_args = TrainingArguments(
 #     cfg, cfg_start_symbol, 10000 * 512, tokenizer=tokenizer, device=device
 # ),
 train_dataset=cfg_datasets.CFGFileDataset(
-        filename=DATASET_TRAIN_PATH, device=device
+        filename=DATASET_TRAIN_PATH, device=device, reverse=reverse
     )
 eval_dataset=cfg_datasets.CFGFileDataset(
-        filename=DATASET_VALIDATION_PATH, device=device
+        filename=DATASET_VALIDATION_PATH, device=device, reverse=reverse
     )
 data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 
