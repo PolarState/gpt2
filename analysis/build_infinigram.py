@@ -14,10 +14,10 @@ The on-disk layout under <output_dir>/ is:
 
 Usage:
     # Build from validation set:
-    python analysis/build_infinigram.py --dataset ../CFG/datasets/cfg3b_val_dataset.bin
+    python analysis/build_infinigram.py --dataset ../CFG/datasets/cfg3b_val_dataset_seed1.bin
 
     # Build from training set:
-    python analysis/build_infinigram.py --dataset ../CFG/datasets/cfg3b_train_dataset.bin
+    python analysis/build_infinigram.py --dataset ../CFG/datasets/cfg3b_train_dataset_seed0.bin
 """
 
 import argparse

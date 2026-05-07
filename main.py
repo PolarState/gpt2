@@ -7,7 +7,7 @@ import logging
 import psutil
 import subprocess
 
-from cfg import cfg_defines, cfg_datasets
+from cfg import cfg_datasets
 from cfg.cfg_grammar import CFGrammar
 from cfg.cfg_tokenizers import CFGCharacterTokenizer
 from cfg.hf_adapter import HFTokenizerAdapter
@@ -15,8 +15,8 @@ from cfg.hf_adapter import HFTokenizerAdapter
 from transformers import DataCollatorForLanguageModeling
 from transformers import TrainingArguments, Trainer, TrainerCallback
 
-DATASET_TRAIN_PATH = "../CFG/datasets/cfg3b_train_dataset.bin"
-DATASET_VALIDATION_PATH = "../CFG/datasets/cfg3b_val_dataset.bin"
+DEFAULT_TRAIN_PATH = "../CFG/datasets/cfg3b_train_dataset_seed0.bin"
+DEFAULT_VAL_PATH = "../CFG/datasets/cfg3b_val_dataset_seed1.bin"
 
 logging.basicConfig(
     filename="training.log",
@@ -76,6 +76,16 @@ parser.add_argument(
     help="Read the dataset in reverse window order (last window first).",
     action=argparse.BooleanOptionalAction,
 )
+parser.add_argument(
+    "--train-dataset",
+    default=DEFAULT_TRAIN_PATH,
+    help="Path to the training dataset .bin file.",
+)
+parser.add_argument(
+    "--val-dataset",
+    default=DEFAULT_VAL_PATH,
+    help="Path to the validation dataset .bin file.",
+)
 
 args = parser.parse_args()
 config = vars(args)
@@ -83,10 +93,8 @@ resume = config["resume"]
 model_name = config["model"]
 output_path = config["output"]
 reverse = config["reverse"]
-
-
-cfg = cfg_defines.cfg3b
-cfg_start_symbol = "22"
+train_dataset_path = config["train_dataset"]
+val_dataset_path = config["val_dataset"]
 
 grammar = CFGrammar.from_name("cfg3b")
 tokenizer = HFTokenizerAdapter(CFGCharacterTokenizer(vocab=grammar.terminal_symbols))
@@ -147,17 +155,11 @@ training_args = TrainingArguments(
     fp16=True,
 )
 
-# train_dataset=cfg_datasets.CFGRandomGenerationDataset(
-#     cfg, cfg_start_symbol, 100000 * 96 * 512, tokenizer=tokenizer, device=device
-# ),
-# eval_dataset=cfg_datasets.CFGRandomGenerationDataset(
-#     cfg, cfg_start_symbol, 10000 * 512, tokenizer=tokenizer, device=device
-# ),
 train_dataset=cfg_datasets.CFGFileDataset(
-        filename=DATASET_TRAIN_PATH, device=device, reverse=reverse
+        filename=train_dataset_path, device=device, reverse=reverse
     )
 eval_dataset=cfg_datasets.CFGFileDataset(
-        filename=DATASET_VALIDATION_PATH, device=device, reverse=reverse
+        filename=val_dataset_path, device=device, reverse=reverse
     )
 data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 

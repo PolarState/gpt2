@@ -38,13 +38,13 @@ Data flow
 
 Usage:
     # Build from validation set (fast, ~5M tokens):
-    python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_val_dataset.bin
+    python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_val_dataset_seed1.bin
 
     # Build from full training set (~4.9B tokens):
-    python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_train_dataset.bin
+    python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_train_dataset_seed0.bin
 
     # Build from a subset:
-    python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_train_dataset.bin --max-windows 1000000
+    python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_train_dataset_seed0.bin --max-windows 1000000
 """
 
 import argparse
@@ -265,7 +265,7 @@ def main():
     args = parser.parse_args()
 
     # Derive output directory from dataset name if not specified.
-    # E.g. cfg3b_train_dataset.bin → analysis/cdawg_cfg3b_train_dataset/
+    # E.g. cfg3b_train_dataset_seed0.bin → analysis/cdawg_cfg3b_train_dataset_seed0/
     if args.output_dir is None:
         stem = os.path.splitext(os.path.basename(args.dataset))[0]
         args.output_dir = os.path.join("analysis", f"cdawg_{stem}")

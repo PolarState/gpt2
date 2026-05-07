@@ -66,13 +66,13 @@ pip install target/wheels/*.whl
 
 ```bash
 # Full training set (disk-backed, ~4.9B tokens):
-python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_train_dataset.bin
+python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_train_dataset_seed0.bin
 
 # Validation set only (faster, ~5M tokens):
-python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_val_dataset.bin
+python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_val_dataset_seed1.bin
 
 # Subset of the training set (e.g. first 1M windows):
-python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_train_dataset.bin --max-windows 1000000
+python analysis/build_dawg.py --dataset ../CFG/datasets/cfg3b_train_dataset_seed0.bin --max-windows 1000000
 ```
 
 The CDAWG is saved to `analysis/cdawg_<dataset_name>/` and can be reloaded for querying via `DiskCdawg.load()`.
@@ -91,10 +91,10 @@ pip install pydivsufsort
 
 ```bash
 # Validation set (~10s, ~250 MB on disk):
-python analysis/build_infinigram.py --dataset ../CFG/datasets/cfg3b_val_dataset.bin
+python analysis/build_infinigram.py --dataset ../CFG/datasets/cfg3b_val_dataset_seed1.bin
 
 # Full training set (~70 min single-threaded, ~42 GB on disk):
-python analysis/build_infinigram.py --dataset ../CFG/datasets/cfg3b_train_dataset.bin
+python analysis/build_infinigram.py --dataset ../CFG/datasets/cfg3b_train_dataset_seed0.bin
 ```
 
 The index is saved to `analysis/sa_<dataset_name>/` as `tokens.bin` (raw uint8) plus `suffix_array.bin` (raw int32 or int64; see `meta.txt`).
