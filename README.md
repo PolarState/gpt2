@@ -30,6 +30,30 @@ python main.py -m GPTNeoX
 
 Uses a GPTNeoX config sized to match GPT2 (768 hidden, 12 layers, 12 heads) but with rotary position embeddings instead of learned embeddings. Uses the GPT2 tokenizer via `GPTNeoXTokenizerFast`.
 
+### Selecting a dataset
+
+By default `main.py` trains on `../CFG/datasets/cfg3b_train_dataset_seed0.bin`
+and evaluates on `../CFG/datasets/cfg3b_val_dataset_seed1.bin`. Pick a different
+file with `--train-dataset` and/or `--val-dataset`:
+
+```bash
+# Train on a different seed of cfg3b:
+python main.py -m GPTNeoX \
+    --train-dataset ../CFG/datasets/cfg3b_train_dataset_seed1.bin
+
+# Use a custom validation set:
+python main.py -m GPTNeoX \
+    --val-dataset path/to/my_val.bin
+```
+
+Dataset files must be in the big-endian int32 / 512-token-window format that
+`CFGFileDataset` reads. See `../CFG/datasets/README.md` for the on-disk format
+and the seeds available for the cfg3b grammar.
+
+To iterate the dataset from the last window to the first (e.g. for training a
+backwards LM), pass `--reverse`. Window contents are unchanged; only window
+order is flipped.
+
 ### Resuming training
 
 To resume from the latest checkpoint:
