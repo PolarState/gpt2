@@ -47,10 +47,41 @@ def build_tokenizer(grammar: CFGrammar) -> HFTokenizerAdapter:
     return HFTokenizerAdapter(char_tok)
 
 
-def tokenize_examples(grammar, tokenizer, num_examples):
+def parse_mask_rule(spec: str, rules: dict) -> tuple[str, int]:
+    """Parse '<NT>:<INDEX>' (e.g. '7:0') and validate against the grammar."""
+    if ":" not in spec:
+        raise ValueError(f"--mask-rule must be 'NT:INDEX', got {spec!r}")
+    nt, idx_str = spec.split(":", 1)
+    if nt not in rules:
+        raise ValueError(f"NT {nt!r} not in grammar; valid: {sorted(rules.keys())}")
+    idx = int(idx_str)
+    if not (0 <= idx < len(rules[nt])):
+        raise ValueError(
+            f"NT {nt!r} has {len(rules[nt])} rules, index {idx} out of range"
+        )
+    return nt, idx
+
+
+def build_mask_weights(rules: dict, mask_nt: str, mask_idx: int) -> dict:
+    """Weights dict: 1.0 for every rule except the masked one (0.0).
+
+    Passed to CFGrammar.generate(weights=...). random.choices treats a
+    weight of 0 as never-selected, so the masked production is fully
+    suppressed without modifying the grammar object.
+    """
+    return {
+        nt: [
+            0.0 if (nt == mask_nt and i == mask_idx) else 1.0
+            for i in range(len(prods))
+        ]
+        for nt, prods in rules.items()
+    }
+
+
+def tokenize_examples(grammar, tokenizer, num_examples, weights=None):
     examples = []
     for _ in range(num_examples):
-        text = grammar.generate()
+        text = grammar.generate(weights=weights)
         ids = (
             [tokenizer.bos_token_id]
             + tokenizer.encode(text, add_special_tokens=False)
@@ -152,7 +183,13 @@ def run_small_mode(args):
         f"eos={tokenizer.eos_token!r}({tokenizer.eos_token_id})"
     )
 
-    examples = tokenize_examples(grammar, tokenizer, args.num_examples)
+    weights = None
+    if args.mask_rule is not None:
+        nt, idx = parse_mask_rule(args.mask_rule, grammar.rules)
+        print(f"masking NT {nt!r} rule index {idx}: {grammar.rules[nt][idx]}")
+        weights = build_mask_weights(grammar.rules, nt, idx)
+
+    examples = tokenize_examples(grammar, tokenizer, args.num_examples, weights=weights)
     total_ids = sum(len(ids) for _, ids in examples)
     print(
         f"generated {len(examples)} examples, "
@@ -191,6 +228,12 @@ def run_streaming_mode(args):
         f"eos={char_tok.eos_string!r}({eos_id})"
     )
 
+    weights = None
+    if args.mask_rule is not None:
+        nt, idx = parse_mask_rule(args.mask_rule, grammar.rules)
+        print(f"masking NT {nt!r} rule index {idx}: {grammar.rules[nt][idx]}")
+        weights = build_mask_weights(grammar.rules, nt, idx)
+
     window_length = args.window_length
     num_windows = args.num_windows
     flush_windows = max(1, args.flush_windows)
@@ -216,7 +259,7 @@ def run_streaming_mode(args):
 
             # Generate examples until we have enough ids to flush.
             while len(buf) < target_chunk_ids:
-                text = grammar.generate()
+                text = grammar.generate(weights=weights)
                 buf.append(bos_id)
                 # Inline the encode loop: dict lookup per char, no HF overhead.
                 for c in text:
@@ -326,6 +369,12 @@ def parse_args():
         type=float,
         default=10.0,
         help="streaming mode: print progress every N seconds",
+    )
+    p.add_argument(
+        "--mask-rule",
+        default=None,
+        help="Suppress one production rule by setting its sampling weight to 0. "
+             "Format: 'NT:INDEX' (e.g. '7:0'). Other rules keep weight 1.",
     )
     return p.parse_args()
 

@@ -135,3 +135,55 @@ python analysis/build_infinigram.py --dataset ../CFG/datasets/cfg3b_train_datase
 ```
 
 The index is saved to `analysis/sa_<dataset_name>/` as `tokens.bin` (raw uint8) plus `suffix_array.bin` (raw int32 or int64; see `meta.txt`).
+
+## Production-Rule Traces
+
+`build_char_dataset.py` writes the *terminal stream* (what the model trains
+on); `analysis/dump_traces.py` writes the *parse tree* — i.e. which
+production rule was sampled at every nonterminal expansion. Useful for
+counting rule frequencies, plotting derivation depth distributions, or
+spot-checking what a `--mask-rule` actually changed.
+
+Backed by `CFGrammar.generate_traced` (in the CFG package), which consumes
+RNG identically to `CFGrammar.generate` — so the same `--seed` here as in
+`build_char_dataset.py` produces the *same* derivation, just exposed as a
+tree instead of flattened to terminals.
+
+### Output format
+
+JSONL — one tree per line. Every node is an object (Schema B):
+
+```json
+{"nt": "22", "rule": 0, "children": [
+    {"nt": "21", "rule": 1, "children": [
+        {"nt": "16", "rule": 0, "children": [
+            {"nt": "13", "rule": 0, "children": [{"t": "3"}, {"t": "2"}]},
+            ...
+        ]},
+        ...
+    ]},
+    ...
+]}
+```
+
+Internal nodes carry `nt` (the NT name), `rule` (the index into
+`grammar.rules[nt]` of the sampled production), and `children` (recursive).
+Terminal leaves are wrapped: `{"t": "<terminal>"}`.
+
+### Usage
+
+```bash
+# 1000 trees, default cfg3b, seed 0:
+python analysis/dump_traces.py --num-samples 1000 --seed 0 --output traces.jsonl
+
+# Match one of the masked training datasets:
+python analysis/dump_traces.py --num-samples 1000 --seed 0 \
+    --mask-rule 7:0 --output traces_mask7a.jsonl
+
+# Full-train-set scale (~9.6M trees, ~9 GB, ~50 min single-threaded):
+python analysis/dump_traces.py --num-samples 9600001 --seed 0 --output traces_seed0.jsonl
+```
+
+Throughput is ~3.3K trees/sec on one core. The output streams line-by-line,
+so any size is fine — process with `jq`, `pandas.read_json(lines=True)`, or
+plain `for line in open(path)` in Python.
